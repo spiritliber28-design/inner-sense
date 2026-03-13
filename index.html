@@ -799,6 +799,10 @@
     .chat-messages { height: 340px; }
   }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>
+  emailjs.init('KVhB1C7xdV0yJ3HnW');
+</script>
 </head>
 <body>
 
@@ -1007,6 +1011,42 @@ function updateTelefon() {
 }
 
 // ── Persistent client DB using artifact storage ──
+// ── Salvare automată în Google Sheets ──
+async function saveClientToSheets(clientData) {
+  try {
+    await fetch('/api/save-client', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(clientData)
+    });
+  } catch(e) {
+    console.warn('Sheets save failed (non-critical):', e);
+  }
+}
+
+// ── Trimitere email la client nou ──
+async function sendClientEmail(clientData) {
+  try {
+    await emailjs.send('service_v89xdpe', 'template_qmha4vn', {
+      nume: clientData.nume || 'Nespecificat',
+      telefon: clientData.telefon || '-',
+      mail: clientData.mail || '-',
+      localitate: clientData.localitate || 'Nespecificat',
+      data: clientData.data || '-',
+      scor: clientData.scor || '-',
+      nivel: clientData.nivel || '-',
+      program_recomandat: clientData.program_recomandat || '-',
+      optiuni: clientData.optiuni || '-',
+      durere_principala: clientData.durere_principala || '-',
+      motivatie: clientData.motivatie || '-',
+      necesita_calendly: clientData.necesita_calendly ? 'Da — programează Calendly' : 'Nu'
+    });
+    console.log('Email trimis cu succes!');
+  } catch(e) {
+    console.warn('Email send failed (non-critical):', e);
+  }
+}
+
 async function saveClientToStorage(clientData) {
   try {
     const key = 'clients-list';
@@ -1290,6 +1330,23 @@ async function sendMessage() {
           sessionComplete = true;
           renderResults(analysisData);
           input.placeholder = 'Analiza completă. Salvează PDF-ul.';
+          // Salvare automată în Sheets la finalul conversației
+          saveClientToSheets({
+            id: Date.now(),
+            data: new Date().toLocaleDateString('ro-RO', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}),
+            nume: '(neînregistrat)',
+            telefon: '',
+            mail: '',
+            optiuni: '',
+            scor: analysisData.scor,
+            nivel: analysisData.nivel,
+            program_recomandat: analysisData.program_recomandat,
+            localitate: analysisData.localitate || 'Nespecificat',
+            tara: analysisData.tara || '-',
+            durere_principala: analysisData.durere_principala,
+            motivatie: analysisData.motivatie_reala,
+            necesita_calendly: analysisData.necesita_calendly
+          });
         } catch(e) {
           addMessage('ai', aiText.split('INNER_SENSE_RESULT:')[0].trim() || 'Analiza ta este gata.');
           renderFallback();
@@ -1604,6 +1661,8 @@ async function inregistreazaClient() {
   };
 
   await saveClientToStorage(clientRecord);
+  await sendClientEmail(clientRecord);
+  await saveClientToSheets(clientRecord);
 
   // Disable form
   document.getElementById('btnInregistrare').disabled = true;
